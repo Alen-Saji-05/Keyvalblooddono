@@ -4,7 +4,7 @@ This is a living document. It explains what the system does, how each piece work
 technology and design decision was made, including the alternatives that were considered and the
 reasons they were rejected. It is updated in the same commit as the change it describes.
 
-Last updated: 2026-08-07 (Phase 3)
+Last updated: 2026-08-07 (Phase 7, complete)
 
 ---
 
@@ -765,9 +765,93 @@ are going unmet across the network is not a figure to publish to the people the 
 
 ---
 
-## 9. Sections to be written as their phases land
+## 9. The frontend
 
-- Frontend architecture: visual identity, component structure, and the three role-scoped areas.
+### 9.1 Visual identity
+
+Original, and deliberately not derived from the reference portal. eRaktKosh was studied for which
+screens a blood network needs and how densely it presents them; none of its branding, imagery,
+colour, or layout is reproduced. There is no emblem, insignia, flag, tricolour, or official symbol
+anywhere in the application. The identity mark is three nodes joined by two links - it says
+"network", which is what this is, rather than reaching for the blood droplet every other site in
+the category already uses.
+
+**The palette decision that matters: red is not used for data.** The brand accent is a deep
+crimson, which is the honest colour for a blood network. But blood group badges are neutral, set in
+a monospaced face with extra letter spacing so that plus and minus are unmistakable - mistaking A+
+for A- is the most consequential misreading possible here. Colouring eight blood groups red would
+spend the loudest colour in the palette on the single most repeated element on screen and leave
+nothing louder for a request that is genuinely overdue. Red is reserved for primary actions and
+real urgency.
+
+**Everything resolves to a token.** No component contains a hex value. That is what makes the dark
+theme a second set of values rather than a second set of components, and it is what caught the one
+theming bug that did occur: a decorative wash referenced `--accent-50` directly and rendered as a
+large pale blob on a dark background.
+
+### 9.2 Structure
+
+CSS Modules per component over a design-token layer. Rejected Tailwind, which pushes design
+decisions into class strings spread across markup and makes an original identity harder to define
+in one place; rejected component libraries, each of which arrives with a strong existing identity
+that would have to be fought.
+
+TanStack Query for all server state, with query keys structured so that invalidating a prefix
+invalidates everything beneath it. Recording a donation has to invalidate the request detail, the
+request list, the donor who gave, and the summary, because it changes all four; consistent key
+naming makes that a three-line mutation rather than a list someone eventually forgets to update.
+
+### 9.3 One component, both audiences
+
+The request list and request detail serve administrators and patients from the same code. The
+server already scopes the rows and already withholds donor identities from patients, so a second
+implementation would only be a second place for the scoping to be got wrong. The components differ
+only in wording and in which actions they offer.
+
+### 9.4 Interface decisions worth stating
+
+- **Ineligibility reasons are inline in the donor table, not in a tooltip.** A coordinator scanning
+  for someone to call needs to see that a donor is two weeks from eligible without hovering every
+  row.
+- **Availability and eligibility are shown as separate badges.** They are different facts and are
+  routinely confused: a donor can be marked available and still be unable to give because they
+  donated three weeks ago. Showing both side by side is what makes the distinction visible.
+- **The broadcast result is shown in place, not as a message that disappears.** "Notified 0" cannot
+  be interpreted without "already notified" and "eligible total" beside it, and those numbers
+  decide what the administrator does next.
+- **The donation recorder does not filter to eligible donors.** Somebody may have given at the
+  hospital before the system knew about them. Refusing to record a donation that physically
+  happened would put the fulfilment total out of step with reality, which is worse than recording
+  it.
+- **A patient choosing a blood group sees live supply feedback.** Learning that no compatible donor
+  is currently available is worth knowing at the moment of filing, not after three days of silence.
+- **The donor inbox is cards, not table rows.** Each entry is a person in a hospital needing blood,
+  carrying a hospital name, a callable number, and how much is still needed. A table row would
+  compress that into columns and lose the point of it. The contact number is a real `tel:` link,
+  because on a phone that is the entire interaction.
+- **Every empty state offers the action that resolves it.** An empty state that only reports
+  absence is a dead end.
+
+### 9.5 Accessibility
+
+One focus treatment application-wide, on `:focus-visible` so a mouse click leaves no ring but
+keyboard navigation always shows its position. A skip link ahead of the navigation. Labels bound to
+controls by id, with hints and errors wired through `aria-describedby` and `aria-invalid` by a
+single `Field` component, so the wiring cannot be forgotten per form. Status is never carried by
+colour alone - every badge and every dashboard position label states its meaning in words.
+`prefers-reduced-motion` is respected, including the spinner, which switches from rotation to a
+pulse rather than simply freezing.
+
+### 9.6 Deferred, and honestly so
+
+- **No frontend test suite.** The backend has 129 tests; the interface was verified manually in a
+  browser across all three roles. A component and end-to-end suite is the most significant piece of
+  outstanding work.
+- **No real notification delivery.** The driver layer and the notification records are complete and
+  the console driver is fully exercisable, but SMS would need a paid provider and could not be
+  verified here.
+- **Password reset is not implemented.** An administrator can issue a new password; there is no
+  self-service email flow.
 - Frontend architecture: the visual identity, component structure, and the three role-scoped
   areas.
 - Deployment and operational notes.
