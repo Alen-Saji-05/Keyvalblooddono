@@ -137,3 +137,66 @@ quietly amended, because three of them are the kind that stay invisible until mu
   contradicts its unit arithmetic in both directions, a response flag without a timestamp, an admin
   account linked to a donor record, a donor account without one, a duplicate notification for the
   same donor and request, a negative donation, and an invalid blood group.
+
+### Phase 2 - JWT authentication and role-based authorisation
+
+- **Added the authentication endpoints**: register, login, refresh, logout, current user, and
+  password change, under `/api/auth`. Added administrator account management under `/api/users`.
+  The latter deviates from the planned `/api/auth/users`: accounts are a resource administrators
+  manage, whereas `/api/auth` is reserved for operations on the caller's own session, and keeping
+  them apart lets the refresh cookie's path scope cover exactly the session operations.
+- **Access token in memory, refresh token in an httpOnly cookie.** The access token is returned in
+  the response body with a fifteen minute life; the refresh token is set as an httpOnly,
+  SameSite=Strict cookie and never appears in a response body. A test asserts the body contains no
+  refresh token, so the split cannot be undone by accident.
+- **Refresh tokens rotate on every use.** The presented token is blocklisted and a new one issued,
+  which limits a stolen refresh token to a single use and makes a theft surface as a rejected
+  replay rather than two parties refreshing indefinitely.
+- **The account row is loaded from the database on every authenticated request**, so deactivating
+  an account takes effect immediately rather than when its access token happens to expire. Access
+  tokens are deliberately not blocklist-checked, since at a fifteen minute life that would add a
+  query per request to shorten an already short window.
+- **Password policy is length-only**, twelve characters minimum, no composition rules and no
+  rotation, following NIST SP 800-63B. Passwords containing the account's own email local part are
+  refused, as is a small list of very common choices. The absence of a real breach corpus is
+  recorded as a known gap in `explainer.md` section 7.3.
+- **Login does not disclose whether an account exists.** Unknown address, wrong password, and
+  deactivated account return identical responses, and the unknown-address path verifies against a
+  throwaway hash so Argon2's cost does not make absence measurably faster than a wrong password.
+- **Authorisation is declared as decorators on routes**, with the decorator applying
+  `@jwt_required` itself so an endpoint cannot be written with only a role check and then fail open
+  against an unauthenticated context. Ownership checks live in the service layer, where the row is
+  available.
+- **Added a route audit test** that walks the whole URL map and fails if any endpoint has neither a
+  role requirement nor an entry in an explicit list of intentionally public paths. Adding an
+  unprotected endpoint now has to be a deliberate edit to that list.
+- **Added administrator self-protection**: an admin cannot deactivate or demote their own account,
+  so the last administrator cannot remove the only account able to create another one and leave the
+  network unable to broadcast. Donor accounts cannot change role in either direction, because the
+  role is tied to a donor record.
+- **Added a single error envelope** covering Flask's own HTTP errors, Pydantic validation, JWT
+  rejections, integrity errors, and unhandled exceptions. Validation failures are keyed by field so
+  a form can attach each message to its input. Token expiry has its own code so the client knows to
+  refresh silently rather than redirect to login.
+- **Added the pytest suite**: 44 tests over registration, login, the token lifecycle, password
+  changes, role enforcement, administrator self-protection, and the error envelope. The schema is
+  built by running the real Alembic migration at session start, so a revision that has drifted from
+  the models fails the suite.
+
+### Phase 2 - Defects found and fixed during the phase
+
+- **Logout could never succeed.** The refresh cookie was scoped to `/api/auth/refresh`, so it was
+  never sent to `/api/auth/logout`, and logout returned 401 every time. The cookie path is now
+  `/api/auth`, which is still narrow enough that donor, request, and summary traffic never carries
+  the credential. Caught by the logout test.
+- **Validation errors were keyed by union variant, not by field.** The registration body used a
+  Pydantic discriminated union, which prefixes every error location with the variant tag, so a
+  missing name arrived as `patient.full_name` and no form could map it to an input. Replaced with
+  an explicit role-to-schema lookup, which also keeps the administrator role structurally
+  unreachable from the public endpoint. A test now asserts that no error key contains a dot.
+- **The test isolation fixture leaked identity-mapped objects.** Truncating with RESTART IDENTITY
+  hands the same primary keys back out, so the previous test's cached objects collided with the
+  next test's fixtures. The session is now discarded along with its identity map.
+- **Alembic warned about path separator handling**, falling back to splitting paths on spaces,
+  commas, and colons, which breaks on a Windows drive letter. `path_separator = os` is now stated
+  explicitly.

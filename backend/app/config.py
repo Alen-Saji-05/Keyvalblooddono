@@ -61,9 +61,12 @@ class BaseConfig:
     JWT_TOKEN_LOCATION = ["headers", "cookies"]
     JWT_ACCESS_COOKIE_NAME = "bloodnet_access"
     JWT_REFRESH_COOKIE_NAME = "bloodnet_refresh"
-    # Scoping the cookie to the refresh endpoint means it is not attached to ordinary
-    # API calls, so it is not exposed on every request merely to be available on one.
-    JWT_REFRESH_COOKIE_PATH = "/api/auth/refresh"
+    # Scoped to the auth namespace rather than to /api/auth/refresh alone. Logout has to
+    # revoke the refresh token, so it needs to receive it; a cookie scoped to the refresh
+    # path only is simply never sent to the logout endpoint, which makes signing out
+    # impossible. /api/auth is still narrow enough that the bulk of API traffic - donors,
+    # requests, donations, summary - never carries this credential.
+    JWT_REFRESH_COOKIE_PATH = "/api/auth"
     JWT_COOKIE_SECURE = _bool("JWT_COOKIE_SECURE", False)
     JWT_COOKIE_SAMESITE = "Strict"
     # SameSite=Strict already blocks the cross-site request that CSRF depends on, and the

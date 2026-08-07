@@ -4,7 +4,7 @@ This is a living document. It explains what the system does, how each piece work
 technology and design decision was made, including the alternatives that were considered and the
 reasons they were rejected. It is updated in the same commit as the change it describes.
 
-Last updated: 2026-08-07 (Phase 1)
+Last updated: 2026-08-07 (Phase 2)
 
 ---
 
@@ -453,9 +453,153 @@ over-supplied request is fulfilled, not stuck in partial forever.
 
 ---
 
-## 7. Sections to be written as their phases land
+## 7. Authentication and authorisation as built
 
-- API surface: endpoints, authorisation rules, and any deviation from the suggested surface.
+### 7.1 Endpoints
+
+```
+POST   /api/auth/register        public: create a donor or patient account
+POST   /api/auth/login           public, rate limited
+POST   /api/auth/refresh         refresh cookie; rotates the refresh token
+POST   /api/auth/logout          refresh cookie; revokes it
+GET    /api/auth/me              any signed-in account
+PATCH  /api/auth/me/password     any signed-in account
+
+GET    /api/users                admin
+POST   /api/users                admin
+GET    /api/users/:id            admin
+PATCH  /api/users/:id            admin
+```
+
+**Deviation from the planned surface: account management is `/api/users`, not
+`/api/auth/users`.** Accounts are a resource that administrators manage; `/api/auth` is reserved
+for operations on the caller's own session. Keeping the two apart means the refresh cookie's path
+scope covers exactly the session operations and nothing else.
+
+### 7.2 Registration is public, and admin is unreachable from it
+
+A donation network that needs staff intervention to accept a new donor will not grow, so donor and
+patient sign-up is open. The admin role cannot be reached through it: the submitted role selects
+which Pydantic schema validates the body, and there is no schema registered for admin, so an
+escalated value never selects a model and never reaches the service layer. The first admin comes
+from the `seed-admin` CLI command; every later one is created by an existing admin.
+
+**Rejected: a Pydantic discriminated union for the registration body.** It was implemented first
+and then removed. Pydantic prefixes every error location with the variant tag, so a missing name
+came back keyed as `patient.full_name` rather than `full_name`, and the registration form could not
+attach a message to its field without knowing to strip a prefix. An explicit role-to-schema lookup
+costs four lines and keeps error keys equal to field names. A test asserts that no error key
+contains a dot, so the regression cannot return unnoticed.
+
+**Rejected: one schema with optional donor fields.** A patient could then post a blood group and
+have it silently ignored, and a donor could omit a required one and only discover it at the
+database.
+
+### 7.3 Password policy
+
+Minimum twelve characters, no composition rules, no forced rotation, for every role including
+admin. This follows NIST SP 800-63B, which found that mandatory character-class rules and periodic
+rotation push people towards predictable substitutions and reuse, while length is what actually
+resists guessing. A password is also refused if it contains the local part of the account's own
+email address, since such a password is disclosed by the username, and if it appears in a small
+built-in list of the most common choices.
+
+**Known gap:** that list is a token gesture, not a breach corpus. A production deployment should
+check candidates against a real compromised-password set.
+
+### 7.4 Login does not disclose whether an account exists
+
+Unknown address, wrong password, and deactivated account all return the same 401 with the same
+message. A test asserts the two responses are byte-identical. For a medical service, confirming
+that a particular person is registered with a blood network is itself a disclosure.
+
+Timing is equalised as well: Argon2 verification is deliberately slow, so returning early on an
+unknown address would make "no such account" measurably faster than "wrong password" and turn the
+endpoint into an enumeration oracle. The unknown-address path verifies against a throwaway hash so
+both paths do the same work.
+
+Registration does disclose that an address is taken, which is unavoidable - a sign-up form that
+silently accepted a duplicate would be unusable. The endpoint where enumeration actually matters is
+login, and that one does not.
+
+### 7.5 Refresh token rotation
+
+Every refresh revokes the presented token and issues a new one, rather than one token being reused
+for its whole seven-day life. Rotation limits a stolen refresh token to a single use, and because
+the superseded token is blocklisted, the thief and the legitimate user cannot both keep refreshing:
+whichever presents the old token second is rejected, which surfaces the theft rather than hiding
+it.
+
+### 7.6 The refresh cookie's path scope
+
+Scoped to `/api/auth`, not to `/api/auth/refresh`.
+
+The narrower scope was implemented first and was wrong: logout has to revoke the refresh token, so
+it has to receive it, and a cookie scoped to the refresh path alone is simply never sent to the
+logout endpoint. The result was a logout that always returned 401. `/api/auth` is still narrow
+enough that donor, request, donation, and summary traffic never carries the credential.
+
+### 7.7 The account is loaded from the database on every authenticated request
+
+Role and donor link travel in the token as claims, so an ordinary authorisation decision needs no
+query. But the account row itself is fetched on each request, and that is deliberate: without it,
+deactivating an administrator would take effect only when their current access token expired,
+leaving up to fifteen minutes in which a disabled account can still read every donor's contact
+details and medical unavailability reason. One indexed primary-key lookup in exchange for immediate
+deactivation is the right side of that trade. A test asserts that a still-valid access token stops
+working the moment the account is deactivated.
+
+Access tokens are not checked against the revocation blocklist for the mirror-image reason: at a
+fifteen-minute lifetime that would add a second query per request to shorten a window that is
+already short.
+
+### 7.8 Authorisation is declared on the route, and ownership is checked on the row
+
+Role requirements are decorators, so the permission for an endpoint is visible on the line above
+it and an endpoint with no decorator is conspicuously public rather than accidentally so. The
+decorator applies `@jwt_required` itself, so an endpoint cannot be written with only a role check
+and then read from an unauthenticated context and fail open.
+
+A test walks the entire route table and fails if any endpoint has neither a role requirement nor an
+entry in an explicit allow-list of intentionally public paths. Adding an unprotected endpoint is
+therefore a conscious act recorded in the test file, not something that happens by forgetting a
+decorator.
+
+Role is only ever the first filter. Ownership - a patient reading their own request, a donor
+answering their own notification - cannot be decided from a token and is enforced in the service
+layer where the row is available.
+
+### 7.9 Administrators cannot lock the network out of itself
+
+An admin may not deactivate their own account or change their own role. The concern is not
+protecting them from a mistake but the last administrator removing the only account that can create
+another one, which would leave the system unable to broadcast any request and no way back short of
+the CLI.
+
+A donor account's role can never be changed, in either direction. A donor account is tied to a
+donor record: promoting one would orphan the record, and demoting some other account into a donor
+would need a record that does not exist. Those cases are handled by creating the right account, not
+by mutating one.
+
+### 7.10 One error envelope
+
+Every failure leaves the API as `{"error": {"code", "message", "details"}}`, including Flask's own
+404 and 405, Pydantic validation failures, JWT rejections, and unhandled exceptions. Without this,
+the client would parse a different shape per error source, and Flask would return HTML for a 404.
+
+Validation errors carry a field-keyed map so a form can attach each message to its input.
+Unexpected exceptions and database integrity errors are logged in full and reported generically,
+because their messages carry table names, constraint names, connection strings, and row contents.
+
+Token expiry has its own code, `token_expired`, distinct from other 401s, because it is the one
+authentication failure the client should answer by silently refreshing rather than by sending the
+user to the login screen.
+
+---
+
+## 8. Sections to be written as their phases land
+
+- Domain API surface: donors, requests, broadcast, donations, and summary.
 - Frontend architecture: the visual identity, component structure, and the three role-scoped
   areas.
 - Deployment and operational notes.

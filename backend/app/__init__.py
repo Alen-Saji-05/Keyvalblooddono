@@ -30,7 +30,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 from flask import Flask  # noqa: E402
 
 from .config import resolve_config  # noqa: E402
-from .extensions import db, migrate  # noqa: E402
+from .extensions import cors, db, jwt, limiter, migrate  # noqa: E402
 
 
 def create_app(config_name: str | None = None) -> Flask:
@@ -38,6 +38,7 @@ def create_app(config_name: str | None = None) -> Flask:
     app.config.from_object(resolve_config(config_name)())
 
     register_extensions(app)
+    register_error_handling(app)
     register_cli(app)
     register_routes(app)
 
@@ -51,6 +52,30 @@ def register_extensions(app: Flask) -> None:
     # column in place, and this project targets PostgreSQL, where ALTER works properly.
     migrate.init_app(app, db, directory=os.path.join(app.root_path, "..", "migrations"))
 
+    jwt.init_app(app)
+
+    from .security.tokens import register_jwt_callbacks
+
+    register_jwt_callbacks(app)
+
+    limiter.init_app(app)
+
+    # supports_credentials is required for the refresh cookie to be sent from the Vite
+    # development server, which is a different origin than the API. It also means the
+    # allowed origins must be an explicit list rather than a wildcard, since a browser
+    # refuses to send credentials to a wildcard origin.
+    cors.init_app(
+        app,
+        resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}},
+        supports_credentials=True,
+    )
+
+
+def register_error_handling(app: Flask) -> None:
+    from .api.errors import register_error_handlers
+
+    register_error_handlers(app)
+
 
 def register_cli(app: Flask) -> None:
     from .cli import register_commands
@@ -59,6 +84,10 @@ def register_cli(app: Flask) -> None:
 
 
 def register_routes(app: Flask) -> None:
+    from .api.auth import bp as auth_bp
     from .api.health import bp as health_bp
+    from .api.users import bp as users_bp
 
     app.register_blueprint(health_bp, url_prefix="/api")
+    app.register_blueprint(auth_bp, url_prefix="/api/auth")
+    app.register_blueprint(users_bp, url_prefix="/api/users")

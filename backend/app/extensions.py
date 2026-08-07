@@ -7,6 +7,10 @@ without extensions carrying state between them.
 
 from __future__ import annotations
 
+from flask_cors import CORS
+from flask_jwt_extended import JWTManager
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
@@ -23,3 +27,14 @@ from .models.base import Base
 db = SQLAlchemy(model_class=Base)
 
 migrate = Migrate()
+
+jwt = JWTManager()
+
+# Keyed on the client address. This is the honest limit available without accounts, and
+# it is applied to login and registration, which are reachable before anyone is
+# authenticated. It is imperfect behind a shared NAT or a proxy that does not set
+# forwarding headers, but the alternative - no limit at all - leaves an Argon2
+# verification endpoint open to unlimited attempts.
+limiter = Limiter(key_func=get_remote_address)
+
+cors = CORS()
