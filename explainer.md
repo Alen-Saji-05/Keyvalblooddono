@@ -4,7 +4,7 @@ This is a living document. It explains what the system does, how each piece work
 technology and design decision was made, including the alternatives that were considered and the
 reasons they were rejected. It is updated in the same commit as the change it describes.
 
-Last updated: 2026-08-07 (Phase 0)
+Last updated: 2026-08-07 (Phase 1)
 
 ---
 
@@ -272,7 +272,18 @@ harder to change globally. The token layer is the part actually needed here.
 existing visual identity. The brief asks for a distinct one, so adopting a library would mean
 fighting its defaults to look unlike itself.
 
-### 3.14 Testing: pytest against a real PostgreSQL database
+### 3.14 Session management: Flask-SQLAlchemy over a hand-rolled scoped session
+
+**Chosen.** Flask-SQLAlchemy supplies a request-scoped session and binds engine options to
+application config. The declarative base is the project's own `Base`, passed in via
+`model_class`, so the models remain plain SQLAlchemy 2.0 classes that import and unit test
+without an application context.
+
+**Rejected: managing a `scoped_session` directly.** Entirely doable, and it means writing teardown
+handlers that must never be forgotten. A leaked session holds a pooled connection and, worse, an
+open transaction, and the symptom shows up much later as unexplained lock contention.
+
+### 3.15 Testing: pytest against a real PostgreSQL database
 
 **Chosen.** A dedicated `bloodnet_test` database, with each test running inside a transaction that
 is rolled back afterwards. The logic worth testing here - the fulfilment recomputation under a row
@@ -298,11 +309,152 @@ calls, while the SQL that fulfilment correctness depends on goes unexercised.
 
 ---
 
-## 5. Sections to be written as their phases land
+## 5. Data model
 
-- Data model: tables, columns, constraints, indexes, and the reasoning behind each refinement to
-  the starting schema.
-- Domain logic: the eligibility predicate, the fulfilment state machine, and broadcast selection.
+Six tables. The four from the brief, plus `users` for authentication and `token_blocklist` for
+logout. Every enumerated column is a native PostgreSQL enum type rather than free text, so the
+database rejects an invalid value instead of storing it and letting it surface later as a filter
+that silently matches nothing.
+
+### 5.1 Refinements to the starting schema, and why
+
+**`donors` gains `sex`, `date_of_birth`, and `weight_kg`.** The brief asks for "any fields needed
+to compute medical eligibility". Those three are what the standard whole blood criteria are
+actually expressed in: the inter-donation interval differs by sex, donors must be between 18 and
+65, and there is a minimum body weight. Without them the system could check availability and
+nothing else, and would happily broadcast to someone medically barred from donating.
+
+These are eligibility inputs, not registration barriers. An underweight or over-age person can
+still be registered and simply computes as ineligible. Rejecting the registration would throw away
+a record that may become eligible later.
+
+**`weight_kg` is `Numeric`, not `float`.** It sits directly in a comparison against a threshold,
+and binary floating point can make a value entered as 45.0 compare below 45.
+
+**`donors` gains `status_note`.** The reason for unavailability is encoded in the status itself,
+as the brief specifies. This is the free-text detail a human wants alongside it, such as an
+expected return date from travel.
+
+**The unavailability reason lives in the status, not a separate column.** `unavailable_moved`,
+`unavailable_traveling`, and `unavailable_medical` are distinct status values rather than
+`available = false` plus a nullable `reason`. That makes the two invalid combinations -
+unavailable with no reason, available with one - unrepresentable rather than merely discouraged.
+
+**`blood_requests` gains `contact_phone`.** A request with no way to reach the requester is not
+actionable; a donor who wants to help has to be able to call somebody.
+
+**`blood_requests` gains `created_by_user_id`, nullable, `SET NULL` on delete.** This is what
+patient scoping keys off. Matching on the `hospital` text column instead would mean two people
+typing "St. Johns" and "St. John's" see different sets, and two unrelated patients at the same
+hospital see each other's requests. Nullable because an admin can file a request for someone with
+no account; `SET NULL` because deleting a user account must not erase the record that the request
+happened.
+
+**`donations` gains `recorded_by_user_id`.** Only an admin can record a donation, and these rows
+drive every fulfilment figure and every analytic, so it is worth knowing which account wrote each.
+
+**`notifications` gains `channel` and `delivery_error`.** The channel is recorded per row rather
+than read from configuration at display time, so changing the configured driver later does not
+rewrite how past broadcasts appear to have been delivered. `delivery_error` records a driver
+failure without discarding the notification: the outreach still happened and still counts.
+
+**`notifications` gains a unique constraint on `(donor_id, request_id)`.** Re-broadcasting a
+request that is still short of units is a normal thing to do. Without the constraint the second
+broadcast creates a second row for the same donor, which both sends a duplicate message and
+inflates the denominator of the response-rate figure. The broadcast service therefore skips donors
+already notified about that request.
+
+### 5.2 Constraints that hold the invariants
+
+Two invariants are enforced in the database, not only in application code.
+
+**`ck_blood_requests_status_matches_units`** requires that `open` implies zero units received,
+`partially_fulfilled` implies a total strictly between zero and the requirement, and `fulfilled`
+implies the total meets or exceeds it. One service function writes these columns, but the
+constraint means that if any other path ever touches them, the database refuses the write rather
+than letting the request list quietly lie about which requests still need donors.
+
+**`ck_notifications_response_at_matches_responded`** requires a response timestamp exactly when
+`responded` is true. Otherwise the response rate could be computed from one column while the
+timestamps say something different.
+
+**`ck_users_donor_role_requires_donor_link`** requires `donor_id` to be set for the donor role and
+null for every other role, so no path can produce a donor account with nothing to manage or an
+admin account that owns somebody's donation history.
+
+Foreign key delete behaviour is chosen per relationship rather than uniformly. `donations.donor_id`
+is `RESTRICT`, because a donation is a medical record and removing a donor must not silently delete
+the history of blood they gave or retroactively change the fulfilment total of a request that was
+met. `notifications` and `donations` cascade from their request, because neither means anything
+without it.
+
+### 5.3 Indexes
+
+The composite index on `donors (blood_group, status, last_donation_date)` is ordered to match the
+eligibility predicate, which filters on exactly those three columns in that order, so one
+structure serves the whole broadcast selector and the eligible-donor count.
+
+Place is matched case-insensitively, so the index is on `lower(place)`. An index on the raw column
+would simply not be consulted by the query that exists.
+
+Donor email is unique through a partial index over the rows that have one, since the column is
+optional.
+
+---
+
+## 6. Domain logic
+
+### 6.1 Eligibility
+
+Expressed once, in `services/eligibility.py`, and rendered two ways from the same thresholds: a
+SQL predicate so the database can filter and count without loading rows, and a Python evaluation
+that returns the reasons a given donor failed so a person can be told why rather than just
+excluded. An eligible-donor count that disagreed with the broadcast selector would be a silently
+wrong number on the dashboard, which is exactly what having one definition prevents.
+
+A donor is eligible when they are marked available, are between the configured minimum and maximum
+ages, meet the minimum weight, and either have never donated or last donated outside the cooldown
+window for their sex.
+
+**The cooldown is sex-dependent, and `other` takes the longer interval.** Erring towards a longer
+wait is the safe direction: the cost is a deferred donation, whereas the cost of the opposite error
+is a donation that should not have happened.
+
+**Thresholds are configuration, not constants.** The safe inter-donation interval is medical policy
+and varies by jurisdiction; the defaults here are 90 days for male donors and 120 for female, ages
+18 to 65, and a 45 kg minimum.
+
+**All calendar arithmetic happens in Python before the predicate reaches SQL.** Comparing a column
+against a bound date keeps the predicate sargable, so the composite index is used. Wrapping the
+column in a date function instead would force the planner to evaluate an expression per row.
+
+**The null branch is load-bearing.** A donor who has never donated has no cooldown to have elapsed.
+Without `last_donation_date IS NULL OR ...`, SQL three-valued logic would silently exclude every
+first-time donor from every broadcast - a bug that produces no error and simply makes the network
+smaller than it is.
+
+### 6.2 Fulfilment
+
+One function, `services/fulfilment.recompute_request_fulfilment`, is the only thing in the codebase
+that writes `units_fulfilled` or `status`.
+
+**The total is recomputed with `SUM`, never incremented.** Incrementing compounds any error that
+ever gets in, and is simply wrong the moment a donation is corrected or removed. Recomputing makes
+the donations table the sole authority and `units_fulfilled` a cache that cannot drift from it.
+
+**The request row is locked with `SELECT ... FOR UPDATE` before the total is read.** Two
+administrators recording donations against the same request at the same moment would otherwise both
+read the pre-existing total and both write a value that omits the other's donation - a lost update
+that leaves a request looking short of blood it actually received. The lock serialises them so the
+second transaction sees the first's committed row.
+
+**`fulfilled` is `>=`, not `==`.** A final donation can overshoot the requirement, and an
+over-supplied request is fulfilled, not stuck in partial forever.
+
+---
+
+## 7. Sections to be written as their phases land
+
 - API surface: endpoints, authorisation rules, and any deviation from the suggested surface.
 - Frontend architecture: the visual identity, component structure, and the three role-scoped
   areas.

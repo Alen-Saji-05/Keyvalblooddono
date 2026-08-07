@@ -23,10 +23,11 @@ dist-ssr/
 *.local
 .vite/
 
-# Editors
+# Editors and tooling
 .vscode/
 .idea/
 *.swp
+.claude/settings.local.json
 
 # Operating system
 Thumbs.db
