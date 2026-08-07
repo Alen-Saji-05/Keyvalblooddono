@@ -17,6 +17,9 @@ INTENTIONALLY_PUBLIC = {
     "/api/health",
     "/api/auth/login",
     "/api/auth/register",
+    # Enumerations and eligibility thresholds only. No data about any person, and the
+    # login and registration screens need it before anyone is authenticated.
+    "/api/meta",
 }
 
 # Endpoints protected by a refresh token rather than by a role. They carry no role

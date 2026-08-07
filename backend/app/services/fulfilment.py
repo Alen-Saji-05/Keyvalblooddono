@@ -37,22 +37,18 @@ def derive_status(units_fulfilled: int, units_required: int) -> RequestStatus:
     return RequestStatus.FULFILLED
 
 
-def recompute_request_fulfilment(session: Session, request_id: int) -> BloodRequest:
-    """Recalculate ``units_fulfilled`` and ``status`` for one request.
+def lock_request(session: Session, request_id: int) -> BloodRequest:
+    """Take an exclusive row lock on a request, and return it.
 
-    Two details carry the weight here.
+    **This must be called before inserting a donation, not after.** The ordering is not a
+    style preference; getting it wrong deadlocks under concurrency, and it did.
 
-    First, the total is recomputed with SUM rather than by incrementing the stored value
-    by the units just donated. Incrementing compounds any error that ever gets in, and
-    it is wrong the moment a donation is corrected or deleted. Recomputing makes the
-    donations table the sole authority and the column a cache that cannot drift.
-
-    Second, the request row is locked with FOR UPDATE before the total is read. Two
-    administrators recording donations against the same request at the same moment would
-    otherwise both read the pre-existing total and both write a value that omits the
-    other's donation. The lock serialises them, so the second transaction reads the
-    first's committed donation and computes a total that includes both. The caller is
-    expected to have inserted its donation before calling, and to commit afterwards.
+    Inserting a donation takes a ``FOR KEY SHARE`` lock on the referenced request row, to
+    stop the parent disappearing mid-insert. If two transactions each insert their
+    donation first and only then ask for ``FOR UPDATE``, each is holding a key-share lock
+    the other's exclusive lock must wait for, and PostgreSQL kills one of them with a
+    deadlock. Acquiring the exclusive lock first gives every writer the same lock order,
+    so the second simply waits for the first to commit.
     """
 
     request = session.execute(
@@ -61,6 +57,24 @@ def recompute_request_fulfilment(session: Session, request_id: int) -> BloodRequ
 
     if request is None:
         raise RequestNotFound(f"No blood request with id {request_id}.")
+
+    return request
+
+
+def recompute_request_fulfilment(session: Session, request_id: int) -> BloodRequest:
+    """Recalculate ``units_fulfilled`` and ``status`` for one request.
+
+    The total is recomputed with SUM rather than by incrementing the stored value by the
+    units just donated. Incrementing compounds any error that ever gets in, and it is
+    wrong the moment a donation is corrected or deleted. Recomputing makes the donations
+    table the sole authority and the column a cache that cannot drift.
+
+    The row lock is re-acquired here, which is free when the caller already holds it -
+    ``FOR UPDATE`` twice in one transaction is a no-op - and correct when this is called
+    on its own, for instance after deleting a donation.
+    """
+
+    request = lock_request(session, request_id)
 
     total: Optional[int] = session.scalar(
         sa.select(sa.func.coalesce(sa.func.sum(Donation.units_given), 0)).where(

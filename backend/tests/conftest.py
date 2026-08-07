@@ -135,6 +135,34 @@ def donor_account(session):
     return donor, user
 
 
+def make_request_row(author_id=None, **overrides):
+    """A blood request needing three units by next week."""
+
+    from app.models import BloodRequest, RequestStatus
+
+    defaults = dict(
+        created_by_user_id=author_id,
+        patient_name="Test Patient",
+        blood_group=BloodGroup.O_NEGATIVE,
+        hospital="Lakeside General Hospital",
+        place="Kochi",
+        contact_phone="9900111222",
+        units_required=3,
+        needed_by_date=date.today() + timedelta(days=7),
+        status=RequestStatus.OPEN,
+    )
+    defaults.update(overrides)
+    return BloodRequest(**defaults)
+
+
+@pytest.fixture
+def blood_request(session, patient):
+    row = make_request_row(author_id=patient.id)
+    session.add(row)
+    session.commit()
+    return row
+
+
 def login(client, email: str, password: str = TEST_PASSWORD):
     """Sign in and return the response, leaving the refresh cookie in the client jar."""
 

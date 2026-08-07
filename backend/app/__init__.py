@@ -85,9 +85,21 @@ def register_cli(app: Flask) -> None:
 
 def register_routes(app: Flask) -> None:
     from .api.auth import bp as auth_bp
+    from .api.donors import bp as donors_bp
     from .api.health import bp as health_bp
+    from .api.me import bp as me_bp
+    from .api.meta import bp as meta_bp
+    from .api.notifications import bp as notifications_bp
+    from .api.requests import bp as requests_bp
+    from .api.summary import bp as summary_bp
     from .api.users import bp as users_bp
 
     app.register_blueprint(health_bp, url_prefix="/api")
+    app.register_blueprint(meta_bp, url_prefix="/api")
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(users_bp, url_prefix="/api/users")
+    app.register_blueprint(donors_bp, url_prefix="/api/donors")
+    app.register_blueprint(requests_bp, url_prefix="/api/requests")
+    app.register_blueprint(notifications_bp, url_prefix="/api/notifications")
+    app.register_blueprint(me_bp, url_prefix="/api/me")
+    app.register_blueprint(summary_bp, url_prefix="/api/summary")

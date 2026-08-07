@@ -4,7 +4,7 @@ This is a living document. It explains what the system does, how each piece work
 technology and design decision was made, including the alternatives that were considered and the
 reasons they were rejected. It is updated in the same commit as the change it describes.
 
-Last updated: 2026-08-07 (Phase 2)
+Last updated: 2026-08-07 (Phase 3)
 
 ---
 
@@ -597,9 +597,177 @@ user to the login screen.
 
 ---
 
-## 8. Sections to be written as their phases land
+## 8. The domain API
 
-- Domain API surface: donors, requests, broadcast, donations, and summary.
+### 8.1 Surface
+
+```
+GET    /api/meta                          public: enumerations and eligibility thresholds
+GET    /api/availability                  any role: eligible donor counts by group, no identities
+
+POST   /api/donors                        admin
+GET    /api/donors                        admin: search
+GET    /api/donors/:id                    admin, or the donor themselves
+PATCH  /api/donors/:id                    admin, or the donor themselves
+PATCH  /api/donors/:id/status             admin, or the donor themselves
+
+POST   /api/requests                      patient, admin
+GET    /api/requests                      any role, scoped
+GET    /api/requests/:id                  any role, scoped
+POST   /api/requests/:id/broadcast        admin
+POST   /api/requests/:id/donations        admin
+
+POST   /api/notifications/:id/respond     donor (own), admin (on a donor's behalf)
+
+GET    /api/me/donor                      donor
+PATCH  /api/me/donor                      donor
+PATCH  /api/me/donor/status               donor
+GET    /api/me/notifications              donor
+GET    /api/me/donations                  donor
+
+GET    /api/summary                       admin (network), patient (own requests)
+```
+
+**Deviations from the suggested surface**, each additive:
+
+- `GET /api/availability` and `GET /api/meta` are new. Availability is what replaces the donor
+  directory for patients. Meta keeps enum labels on the server so the frontend cannot drift from
+  them.
+- `/api/me/*` exists because donor self-service endpoints take no donor id at all. There is no
+  parameter to tamper with and no ownership check that can be forgotten - the only donor these
+  routes can reach is the one on the token.
+- `POST /api/notifications/:id/respond` is new. Without it the response rate would be measurable
+  only through completed donations, and a donor who says "yes, I will come tomorrow" would be
+  counted as having ignored the broadcast.
+- `GET /api/requests/:id` returns donations inline, and notifications too for an administrator.
+
+### 8.2 Everything is paginated, and the page size is capped
+
+Including the endpoints that look small today. The donor directory is the case that matters: a real
+network has tens of thousands of donors, and an unbounded list endpoint is both a slow query and a
+one-request export of the entire contact database. Asking for more than 100 rows is **rejected**
+rather than silently clamped, so a caller cannot request everything and be told it worked.
+
+### 8.3 Scoping is a SQL filter, not a post-fetch check
+
+Request visibility - admin sees all, patient sees their own, donor sees the ones they were notified
+about - is applied as a `WHERE` clause. A request the caller may not see is never loaded, so it
+cannot leak through a pagination total or a count even if a serialiser is later changed.
+
+The default branch of that filter returns nothing rather than everything. If a fourth role is ever
+added and this function is not updated, the failure mode is an empty list rather than a disclosure.
+
+Fetching another patient's request returns **404, not 403**. A 403 would confirm the request exists,
+which lets anyone enumerate the network's requests by probing ids.
+
+### 8.4 Donor identities on a request are administrator-only
+
+A patient viewing their own request sees the donation count, the units, and the dates - real
+progress information - but donor names and ids come back as null, and the notification list is
+absent entirely. Donors who gave never agreed to be identified to the patient. An administrator sees
+everything, because contacting donors is their job. A test asserts the donor's name does not appear
+anywhere in the patient's response body.
+
+### 8.5 Broadcast
+
+Selection is the shared eligibility predicate intersected with the acceptable blood groups, and
+optionally narrowed by place. Using the shared predicate rather than an inline copy is what keeps
+the broadcast in step with the eligible-donor count on the dashboard and the eligible filter in the
+directory; a test asserts the two produce the same number.
+
+**Donors already notified about this request are skipped.** Re-broadcasting a request still short of
+units is a normal thing to do. Without the skip, a second broadcast sends a duplicate message and
+adds a row that inflates the denominator of the response rate. The unique constraint would reject
+the row anyway; the skip turns a would-be error into the intended behaviour.
+
+**Broadcasting a fulfilled request is refused with a 409**, not accepted as a harmless no-op.
+Sending donors to a hospital that no longer needs them wastes a donation that could have gone to an
+open request, and costs the network credibility with the people it depends on. A partially fulfilled
+request can still be broadcast, because it still needs blood.
+
+**The result reports what was skipped, not only what succeeded.** An administrator who sees
+"0 notified" needs to know whether there are no eligible donors of that group or whether everyone
+eligible was already told, because those call for completely different next steps.
+
+**Compatibility widening is opt-in.** `include_compatible=true` widens from an exact group match to
+the transfusion compatibility matrix, so an O-negative donor can be called for any recipient. It is
+off by default so the behaviour matches the brief exactly and an administrator opts into a wider
+list knowingly.
+
+### 8.6 Notification delivery is separate from the notification record
+
+The `notifications` row is the source of truth. Delivery goes through a driver - console by default,
+SMTP when configured. A driver failure records the reason against that one notification and the
+broadcast continues; it does not abort outreach to two hundred other people, and it does not discard
+the record, because the outreach still happened.
+
+That separation is also what makes the response rate well defined with no mail server configured.
+
+### 8.7 Recording a donation
+
+One transaction, and the order is load-bearing. See section 8.8.
+
+Three side effects beyond the donation row itself:
+
+- **Fulfilment is recomputed**, so `units_fulfilled` and `status` follow from the donations table.
+- **The donor's `last_donation_date` moves forward only.** Guarded with a comparison rather than
+  assigned, because an administrator entering a backlog of paper records out of order would
+  otherwise move the date backwards and make a donor look eligible months before they are.
+- **Any matching notification is marked responded.** Somebody who turned up and gave has responded
+  by any reasonable definition, so the response rate counts people who actually helped rather than
+  only those who clicked a button.
+
+A donation dated before the request was created is refused. It cannot have been given in response to
+an appeal that did not exist, and it is almost always a mistyped year.
+
+### 8.8 The deadlock, and the lock ordering that fixes it
+
+This is the most consequential thing found in this phase, and it was found by a test rather than in
+production.
+
+Recording a donation originally inserted the donation row and *then* took the `FOR UPDATE` lock on
+the request to recompute fulfilment. Under two concurrent writers that deadlocks, reliably:
+inserting a row with a foreign key takes a `FOR KEY SHARE` lock on the referenced request, so each
+transaction ends up holding a key-share lock that the other's exclusive lock must wait for.
+PostgreSQL detects the cycle and kills one transaction.
+
+The fix is to acquire the exclusive lock **first**, before inserting, so every writer takes locks in
+the same order and the second simply waits for the first to commit. A test drives the real service
+function from two threads on separate connections and asserts both that no error is raised and that
+neither donation is lost.
+
+The single-threaded tests all passed before the fix. Concurrency bugs of this shape do not appear
+under sequential testing, which is why the test uses real connections rather than one session.
+
+### 8.9 The summary
+
+The four figures the brief asks for, plus the context needed to read them.
+
+- **Donations arranged** is reported as both a count of events and a sum of units, because forty
+  donations of one unit is not the same operational picture as twenty of two.
+- **Fulfilled against unfulfilled** splits unfulfilled into open and partially fulfilled. A request
+  at three of four units needs one more donor; a request at zero needs a broadcast. Averaging them
+  into one number hides which is which.
+- **Donor response rate** uses notifications sent as the denominator, not distinct donors, so a
+  donor notified about three requests counts three times. That is the right denominator for
+  measuring whether broadcasts work.
+- **Donors eligible right now** uses the same predicate as the broadcast selector. This is the whole
+  reason eligibility is defined once. It is deliberately distinct from both "registered" and
+  "available": in the test scenario six donors are registered, five are marked available, and one is
+  eligible, because three have just donated and one is underweight.
+
+The same endpoint serves patients with `scope: "own_requests"`, counting only their own requests.
+Donor counts stay network-wide because they are aggregate, carry no identities, and are exactly what
+tells a patient whether their request has any prospect of being met.
+
+Donors get no summary at all. Their view is their own inbox and donation history; how many requests
+are going unmet across the network is not a figure to publish to the people the network depends on.
+
+---
+
+## 9. Sections to be written as their phases land
+
+- Frontend architecture: visual identity, component structure, and the three role-scoped areas.
 - Frontend architecture: the visual identity, component structure, and the three role-scoped
   areas.
 - Deployment and operational notes.

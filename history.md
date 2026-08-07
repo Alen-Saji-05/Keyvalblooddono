@@ -200,3 +200,73 @@ quietly amended, because three of them are the kind that stay invisible until mu
 - **Alembic warned about path separator handling**, falling back to splitting paths on spaces,
   commas, and colons, which breaks on a Windows drive letter. `path_separator = os` is now stated
   explicitly.
+
+### Phase 3 - The domain API
+
+- **Added the donor directory** at `/api/donors`: registration, paginated search filtered by blood
+  group, place, status, eligibility, and free text, plus edits and availability changes.
+  Administrator only, except that a donor may read and maintain their own record. Eligibility and
+  the reasons for ineligibility are computed server side and returned, so no client reimplements the
+  rule.
+- **Added `/api/availability`**, the aggregate view that replaces the donor directory for patients.
+  Eligible and total donor counts per blood group, with a row for every group including zeroes, and
+  no identifying information of any kind. A test asserts that no donor name, phone number, or email
+  address appears in the response.
+- **Added blood requests** at `/api/requests`, scoped by role in SQL rather than after fetching, so
+  a request the caller may not see is never loaded. Another patient's request returns 404 rather
+  than 403, because a 403 would confirm it exists and let anyone enumerate the network's requests.
+- **Added broadcast** at `/api/requests/:id/broadcast`, administrator only. Selects donors using the
+  shared eligibility predicate, skips anyone already notified about that request, and refuses to
+  broadcast a request that is already fulfilled. The result reports the skipped counts as well as
+  the successes, since "0 notified" means very different things depending on why.
+- **Added opt-in transfusion compatibility widening.** Off by default so the behaviour matches the
+  brief exactly. When enabled, selection follows the ABO and Rh compatibility matrix rather than an
+  exact group match.
+- **Added donation recording** at `/api/requests/:id/donations`, administrator only, which
+  recomputes fulfilment, moves the donor's `last_donation_date` forward only, and marks any matching
+  notification as responded.
+- **Added the donor self-service area** at `/api/me/*`: profile, availability, notification inbox,
+  and donation history. These routes take no donor id at all, so there is no parameter to tamper
+  with and no ownership check that can be forgotten.
+- **Added `/api/notifications/:id/respond`**, so a donor can answer a broadcast and an administrator
+  can record a response taken by telephone. Without it the response rate would count only completed
+  donations and only portal users.
+- **Added the network summary** at `/api/summary`, serving administrators the whole network and
+  patients the same shape scoped to their own requests. Donors get no summary.
+- **Added the notification driver layer**: console by default, SMTP when configured, and a null
+  driver for tests. A delivery failure is recorded against the one notification and the broadcast
+  continues.
+- **Added 83 more tests**, bringing the suite to 127. They cover multi-donor fulfilment, the
+  eligibility rule across every exclusion path, broadcast selection and repeat broadcasts,
+  compatibility widening, request visibility per role, donor identity masking, the notification
+  inbox, and every summary figure.
+
+### Phase 3 - The deadlock, found by a test
+
+Recording a donation inserted the donation row and then took the `FOR UPDATE` lock on the request to
+recompute fulfilment. That ordering deadlocks reliably under two concurrent writers: inserting a row
+with a foreign key takes a `FOR KEY SHARE` lock on the referenced request, so each transaction holds
+a lock the other's exclusive lock must wait for, and PostgreSQL kills one of them.
+
+The exclusive lock is now taken first, before the insert, so every writer acquires locks in the same
+order and the second waits for the first to commit.
+
+Worth recording plainly: every single-threaded test passed both before and after this fix. The bug
+was only visible because the concurrency test drives the real service function from two threads on
+separate database connections. A test using one session, or mocking the database, would have proved
+nothing.
+
+### Phase 3 - Verification
+
+- Full suite: **127 tests passing** against PostgreSQL 17. The concurrency test was run five times
+  in isolation to confirm it is not flaky.
+- Walked the entire flow end to end over the real HTTP surface: administrator registers six donors
+  of whom two are ineligible for different reasons, a donor marks themselves unavailable, a patient
+  self-registers and files a three unit request, the patient is refused when trying to broadcast,
+  the administrator broadcasts to exactly the two eligible donors, a second broadcast notifies
+  nobody twice, three donors fill the request one unit at a time through open and partially
+  fulfilled to fulfilled, broadcasting the fulfilled request is refused, the patient sees progress
+  with donor names nulled while the administrator sees them, and the summary reports three donations
+  of three units, one request fulfilled, none unfulfilled, a 100 per cent response rate, seven
+  donors registered, and one eligible right now because the three who just gave are in cooldown.
+- Rebuilt and reseeded the development database against the current migration.
