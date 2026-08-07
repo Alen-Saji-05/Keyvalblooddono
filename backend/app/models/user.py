@@ -94,7 +94,10 @@ class TokenBlocklist(Base):
     __tablename__ = "token_blocklist"
 
     id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
-    jti: Mapped[str] = mapped_column(sa.String(36), nullable=False, unique=True, index=True)
+    # Unique, but deliberately not also index=True. PostgreSQL implements a unique
+    # constraint with a unique index, so the lookup on every token refresh is already
+    # served; adding a second index would duplicate the same structure.
+    jti: Mapped[str] = mapped_column(sa.String(36), nullable=False, unique=True)
     user_id: Mapped[int] = mapped_column(
         sa.Integer,
         sa.ForeignKey("users.id", ondelete="CASCADE", name="fk_token_blocklist_user_id_users"),

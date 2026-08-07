@@ -10,15 +10,27 @@ from __future__ import annotations
 import os
 
 from dotenv import load_dotenv
-from flask import Flask
 
-from .config import resolve_config
-from .extensions import db, migrate
-
-# Loaded before the configuration classes are instantiated, since they read the
-# environment at that point. Values already present in the real environment win, so a
-# deployment that sets variables directly is not overridden by a stray file.
+# This runs before any other import in the package, and the ordering is deliberate.
+#
+# config.py reads os.environ when its classes are *defined*, not when they are
+# instantiated, so the environment has to be populated before that module is imported.
+# Importing config first and loading the file afterwards leaves every setting at its
+# hardcoded default. The `flask` CLI hides this, because Flask loads .env itself before
+# importing the application, so the bug only appears when the package is imported
+# directly - from a script, a test runner, or a production WSGI server.
+#
+# Every path into this package executes this line first: importing app.config or any
+# other submodule runs the package __init__ before the submodule.
+#
+# load_dotenv does not override variables already set, so a deployment that provides
+# real environment variables is not overridden by a stray file on disk.
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+
+from flask import Flask  # noqa: E402
+
+from .config import resolve_config  # noqa: E402
+from .extensions import db, migrate  # noqa: E402
 
 
 def create_app(config_name: str | None = None) -> Flask:

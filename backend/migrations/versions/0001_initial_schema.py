@@ -80,7 +80,7 @@ def upgrade():
         sa.Column(
             "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
         ),
-        sa.CheckConstraint("weight_kg > 0", name="ck_donors_weight_positive"),
+        sa.CheckConstraint("weight_kg > 0", name="weight_positive"),
         sa.PrimaryKeyConstraint("id", name="pk_donors"),
         sa.UniqueConstraint("phone", name="uq_donors_phone"),
     )
@@ -120,7 +120,7 @@ def upgrade():
         sa.CheckConstraint(
             "(role = 'donor' AND donor_id IS NOT NULL) "
             "OR (role <> 'donor' AND donor_id IS NULL)",
-            name="ck_users_donor_role_requires_donor_link",
+            name="donor_role_requires_donor_link",
         ),
         sa.ForeignKeyConstraint(
             ["donor_id"], ["donors.id"], name="fk_users_donor_id_donors", ondelete="CASCADE"
@@ -151,16 +151,16 @@ def upgrade():
         sa.Column(
             "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
         ),
-        sa.CheckConstraint("units_required > 0", name="ck_blood_requests_units_required_positive"),
+        sa.CheckConstraint("units_required > 0", name="units_required_positive"),
         sa.CheckConstraint(
-            "units_fulfilled >= 0", name="ck_blood_requests_units_fulfilled_non_negative"
+            "units_fulfilled >= 0", name="units_fulfilled_non_negative"
         ),
         sa.CheckConstraint(
             "(status = 'open' AND units_fulfilled = 0) "
             "OR (status = 'partially_fulfilled' "
             "AND units_fulfilled > 0 AND units_fulfilled < units_required) "
             "OR (status = 'fulfilled' AND units_fulfilled >= units_required)",
-            name="ck_blood_requests_status_matches_units",
+            name="status_matches_units",
         ),
         sa.ForeignKeyConstraint(
             ["created_by_user_id"],
@@ -196,8 +196,8 @@ def upgrade():
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
         ),
-        sa.CheckConstraint("units_given > 0", name="ck_donations_units_given_positive"),
-        sa.CheckConstraint("units_given <= 10", name="ck_donations_units_given_plausible"),
+        sa.CheckConstraint("units_given > 0", name="units_given_positive"),
+        sa.CheckConstraint("units_given <= 10", name="units_given_plausible"),
         sa.ForeignKeyConstraint(
             ["donor_id"], ["donors.id"], name="fk_donations_donor_id_donors", ondelete="RESTRICT"
         ),
@@ -236,7 +236,7 @@ def upgrade():
         sa.CheckConstraint(
             "(responded = true AND response_at IS NOT NULL) "
             "OR (responded = false AND response_at IS NULL)",
-            name="ck_notifications_response_at_matches_responded",
+            name="response_at_matches_responded",
         ),
         sa.ForeignKeyConstraint(
             ["donor_id"],
@@ -273,7 +273,8 @@ def upgrade():
         sa.PrimaryKeyConstraint("id", name="pk_token_blocklist"),
         sa.UniqueConstraint("jti", name="uq_token_blocklist_jti"),
     )
-    op.create_index("ix_token_blocklist_jti", "token_blocklist", ["jti"], unique=False)
+    # No separate index on jti: the unique constraint above is implemented as a unique
+    # index, which already serves the lookup performed on every token refresh.
     op.create_index("ix_token_blocklist_expires_at", "token_blocklist", ["expires_at"], unique=False)
 
 

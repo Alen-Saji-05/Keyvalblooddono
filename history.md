@@ -89,3 +89,51 @@ than reconstructed afterwards.
   once fixed fixture dates age.
 - **Chose Flask-SQLAlchemy** for request-scoped session handling over a hand-managed
   `scoped_session`, recorded in `explainer.md` section 3.14.
+
+### Phase 1 - Defects found while verifying the migration against a live database
+
+Four problems surfaced once the migration actually ran. All are recorded here rather than
+quietly amended, because three of them are the kind that stay invisible until much later.
+
+- **`alembic.ini` was in the wrong directory.** Flask-Migrate looks for it inside the migrations
+  directory, not the backend root. With no config file found, `fileConfig` parsed nothing and then
+  failed with a bare `KeyError: 'formatters'`, which names a logging section rather than the actual
+  problem. Moved the file and added an existence check in `env.py` so a future recurrence fails
+  with something diagnosable.
+- **`compare_type` was passed twice to `context.configure`.** Flask-Migrate already supplies it in
+  `configure_args`. The two are now merged, with anything set on the `Migrate` object winning, so a
+  project-level override is still respected.
+- **Check constraint names were doubled in the database**, producing
+  `ck_donors_ck_donors_weight_positive`. The metadata naming convention for check constraints
+  contains `%(constraint_name)s`, which means SQLAlchemy applies it to constraints that already
+  have a name, using the given name as the token. The migration was passing fully-qualified names
+  and having the convention expand them a second time. It now passes the same short names the
+  models use.
+- **`token_blocklist.jti` had both a unique constraint and a separate index.** PostgreSQL
+  implements a unique constraint with a unique index, so the second was a duplicate of the same
+  structure. Removed `index=True` from the model and the redundant `create_index` from the
+  migration.
+- **`.env` was not loaded when the package was imported directly.** `config.py` reads `os.environ`
+  when its classes are defined, not when they are instantiated, and the `load_dotenv` call sat
+  below the config import. The `flask` CLI hid this completely, because Flask loads `.env` itself
+  before importing the application, so every setting silently fell back to its hardcoded default
+  under any other entry point - a script, pytest, or a production WSGI server. The load now runs at
+  the very top of the package `__init__`, before any submodule import.
+
+### Phase 1 - Verification against a live PostgreSQL 17 database
+
+- Created `bloodnet` and `bloodnet_test`, applied the migration, and confirmed a clean
+  downgrade-to-base and upgrade roundtrip, including the enum type drops.
+- Ran `flask db migrate` as a drift check: **no schema changes detected**, so the hand-written
+  revision matches the models exactly.
+- Seeded the demonstration dataset and confirmed the fulfilment service derives the right state
+  for all three cases: an untouched request stays `open`, a request with one of four units becomes
+  `partially_fulfilled`, and a request meeting its requirement from two different donors becomes
+  `fulfilled`.
+- Confirmed the SQL eligibility predicate and the Python evaluation agree on all fifteen seeded
+  donors, with zero disagreements, across every exclusion reason: cooldown, travel, medical
+  unavailability, underweight, and over age.
+- Negative-tested the constraints. All eight attempts were rejected by the database: a status that
+  contradicts its unit arithmetic in both directions, a response flag without a timestamp, an admin
+  account linked to a donor record, a donor account without one, a duplicate notification for the
+  same donor and request, a negative donation, and an invalid blood group.
