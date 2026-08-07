@@ -4,19 +4,25 @@ import { AppShell } from './components/layout/AppShell'
 import { RequireAnonymous, RequireAuth, RoleHomeRedirect } from './auth/guards'
 import { LoginPage } from './features/auth/LoginPage'
 import { RegisterPage } from './features/auth/RegisterPage'
+import { DashboardPage } from './features/dashboard/DashboardPage'
+import { DonorDetailPage } from './features/donors/DonorDetailPage'
+import { DonorsPage } from './features/donors/DonorsPage'
+import { InboxPage } from './features/donor/InboxPage'
+import { MyDonationsPage } from './features/donor/MyDonationsPage'
+import { MyProfilePage } from './features/donor/MyProfilePage'
 import { NotFoundPage } from './features/misc/NotFoundPage'
-import { PlaceholderPage } from './features/misc/PlaceholderPage'
+import { AvailabilityPage } from './features/patient/AvailabilityPage'
+import { NewRequestPage } from './features/patient/NewRequestPage'
+import { RequestDetailPage } from './features/requests/RequestDetailPage'
+import { RequestsPage } from './features/requests/RequestsPage'
+import { UsersPage } from './features/users/UsersPage'
 
 /**
- * Route table.
+ * Route table, grouped by who may reach each branch, so the permission for a screen is
+ * visible in the structure rather than buried in the component.
  *
- * Grouped by who may reach each branch, so the permission for a screen is visible in the
- * structure rather than buried inside the component. These guards are convenience only -
- * the server authorises every request independently, and removing one here would expose
- * a screen, not data.
- *
- * The screens themselves land in the phases that follow; the placeholders below keep every
- * navigation destination reachable so the shell and the guards can be exercised now.
+ * These guards are convenience only. The server authorises every request independently,
+ * and removing a guard here would expose a screen, not data.
  */
 export function App() {
   return (
@@ -31,31 +37,34 @@ export function App() {
       {/* --- Administrator --- */}
       <Route element={<RequireAuth roles={['admin']} />}>
         <Route element={<AppShell />}>
-          <Route path="/dashboard" element={<PlaceholderPage title="Network dashboard" phase="Phase 7" />} />
-          <Route path="/requests" element={<PlaceholderPage title="Blood requests" phase="Phase 5" />} />
-          <Route path="/requests/:id" element={<PlaceholderPage title="Request detail" phase="Phase 5" />} />
-          <Route path="/donors" element={<PlaceholderPage title="Donor registry" phase="Phase 5" />} />
-          <Route path="/donors/:id" element={<PlaceholderPage title="Donor detail" phase="Phase 5" />} />
-          <Route path="/users" element={<PlaceholderPage title="Accounts" phase="Phase 5" />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/requests" element={<RequestsPage />} />
+          <Route path="/requests/:id" element={<RequestDetailPage />} />
+          <Route path="/donors" element={<DonorsPage />} />
+          <Route path="/donors/:id" element={<DonorDetailPage />} />
+          <Route path="/users" element={<UsersPage />} />
         </Route>
       </Route>
 
       {/* --- Patient --- */}
       <Route element={<RequireAuth roles={['patient']} />}>
         <Route element={<AppShell />}>
-          <Route path="/my-requests" element={<PlaceholderPage title="My requests" phase="Phase 6" />} />
-          <Route path="/my-requests/:id" element={<PlaceholderPage title="Request progress" phase="Phase 6" />} />
-          <Route path="/request/new" element={<PlaceholderPage title="New blood request" phase="Phase 6" />} />
-          <Route path="/availability" element={<PlaceholderPage title="Donor availability" phase="Phase 6" />} />
+          {/* The same list and detail components as the administrator sees. The server
+              scopes the rows, so a patient's query returns only their own requests and
+              the screen needs no separate implementation. */}
+          <Route path="/my-requests" element={<RequestsPage />} />
+          <Route path="/my-requests/:id" element={<RequestDetailPage />} />
+          <Route path="/request/new" element={<NewRequestPage />} />
+          <Route path="/availability" element={<AvailabilityPage />} />
         </Route>
       </Route>
 
       {/* --- Donor --- */}
       <Route element={<RequireAuth roles={['donor']} />}>
         <Route element={<AppShell />}>
-          <Route path="/inbox" element={<PlaceholderPage title="Appeals for blood" phase="Phase 6" />} />
-          <Route path="/my-profile" element={<PlaceholderPage title="My donor record" phase="Phase 6" />} />
-          <Route path="/my-donations" element={<PlaceholderPage title="Donation history" phase="Phase 6" />} />
+          <Route path="/inbox" element={<InboxPage />} />
+          <Route path="/my-profile" element={<MyProfilePage />} />
+          <Route path="/my-donations" element={<MyDonationsPage />} />
         </Route>
       </Route>
 

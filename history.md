@@ -334,3 +334,51 @@ refused immediately after logout.
 - **A `Button` wrapping a `Link`** on the not-found page nested an anchor inside a button, which
   is invalid markup and ambiguous to assistive technology. Replaced with a `LinkButton` that
   renders a real anchor, so middle-click and open-in-new-tab work.
+
+### Phases 5, 6, and 7 - The complete interface
+
+Built together at the user's request.
+
+**Administrator screens.** Donor registry with debounced free-text search and filters for blood
+group, place, availability, and eligibility, paginated with the page size capped server side.
+Donor registration and donor detail. Request list and request detail carrying broadcast and
+donation recording. Account management.
+
+**Patient screens.** File a request, with live donor-supply feedback as the blood group is chosen
+so a patient learns immediately whether anyone can help rather than after three days of silence.
+Own request list and progress detail. Aggregate donor availability, with no identities.
+
+**Donor screens.** Appeals inbox presented as cards rather than table rows, because each one is a
+request for help carrying a hospital, a contact number, and how much blood is still needed. Own
+donor record with self-service availability. Donation history.
+
+**Network dashboard.** The four figures from the brief, each with the context needed to read it,
+plus a donor funnel showing registered against available against able-to-give, and a demand table
+pairing outstanding units with the donors who could actually supply them.
+
+Decisions worth recording:
+
+- **The request list and detail are one component for both administrators and patients.** The
+  server already scopes the rows and withholds donor identities from patients, so a second
+  implementation would only be a second place for the scoping to be got wrong.
+- **Ineligibility reasons appear inline in the donor table**, not behind a tooltip. A coordinator
+  scanning for someone to call needs to see that a donor is two weeks away without hovering every
+  row.
+- **The broadcast result is shown in place rather than as a transient message.** "Notified 0" is
+  meaningless without "already notified" and "eligible total" beside it, and those numbers decide
+  what the administrator does next.
+- **The donation recorder does not filter to eligible donors.** Somebody may have given at the
+  hospital before the system knew about them; refusing to record a donation that physically
+  happened would put the fulfilment total out of step with reality.
+- **A progress bar is scaled with a transform rather than resized by width**, so the animation is
+  composited instead of forcing layout on every frame. Flagged by the design hook and fixed.
+
+Verified in the browser against the seeded database: patient request list with per-request
+progress, donor registry showing all fifteen donors with availability and eligibility as separate
+facts and reasons stated inline, request detail with outreach counts and both administrator
+actions, and the dashboard funnel. No horizontal overflow at a narrow viewport. Production build
+succeeds. All 129 backend tests still pass.
+
+A throwaway administrator account was created to verify the administrator screens, because the
+real administrator password belongs to the user and should not pass through this session. It was
+deleted afterwards and only `admin@bloodnet.local` remains.

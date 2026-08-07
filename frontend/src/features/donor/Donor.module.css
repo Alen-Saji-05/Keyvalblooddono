@@ -1,0 +1,160 @@
+.inboxList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+/* An answered appeal recedes rather than disappearing. The donor may still want to see
+   what they agreed to, but it should not compete with the ones still needing a reply. */
+.answered {
+  opacity: 0.72;
+}
+
+.inboxBadges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.inboxFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.contact {
+  min-width: 0;
+}
+
+.contactLabel {
+  display: block;
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+}
+
+.contactValue {
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-accent);
+  text-decoration: none;
+}
+
+.contactValue:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.noticeCaution {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--tone-caution-bg);
+  color: var(--tone-caution-fg);
+  border: 1px solid var(--tone-caution-border);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.profileGrid {
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .profileGrid {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+}
+
+.statusOptions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.statusOption {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.statusOption:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.statusOption:has(input:checked) {
+  border-color: var(--accent-600);
+  background: var(--bg-selected);
+}
+
+.statusOption:has(input:focus-visible) {
+  outline: 2px solid var(--accent-600);
+  outline-offset: 2px;
+}
+
+.statusOption input {
+  margin-top: 3px;
+  accent-color: var(--accent-600);
+  flex-shrink: 0;
+}
+
+.statusText {
+  min-width: 0;
+}
+
+.statusTitle {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.statusHint {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: 1px;
+  line-height: var(--leading-snug);
+}
+
+.reasonList {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.eligibleNote {
+  font-size: var(--text-sm);
+  color: var(--text-positive);
+  line-height: var(--leading-normal);
+}

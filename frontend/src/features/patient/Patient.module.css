@@ -1,0 +1,68 @@
+.formWidth {
+  max-width: 780px;
+}
+
+/* Live supply feedback under the blood group field. Stated as a sentence rather than a
+   bare number, because "0" next to a blood group is alarming without the explanation that
+   compatible donors may still be reachable. */
+.supplyGood,
+.supplyThin {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  border: 1px solid transparent;
+}
+
+.supplyGood {
+  background: var(--tone-positive-bg);
+  color: var(--tone-positive-fg);
+  border-color: var(--tone-positive-border);
+}
+
+.supplyThin {
+  background: var(--tone-caution-bg);
+  color: var(--tone-caution-fg);
+  border-color: var(--tone-caution-border);
+}
+
+.availabilityGrid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.groupCard {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  min-width: 0;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.groupCount {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.groupZero {
+  color: var(--text-disabled);
+}
+
+.groupLabel {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-top: var(--space-1);
+}

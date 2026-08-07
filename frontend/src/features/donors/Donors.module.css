@@ -1,0 +1,91 @@
+.name {
+  display: block;
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.name:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.subtle {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-top: 1px;
+}
+
+.contact {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The ineligibility reason sits under the badge rather than in a tooltip. A coordinator
+   scanning the list for someone to call needs to see that a donor is two weeks away
+   without hovering every row. */
+.reason {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+  line-height: var(--leading-snug);
+  max-width: 30ch;
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 38px;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-600);
+  cursor: pointer;
+}
+
+.detailGrid {
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .detailGrid {
+    grid-template-columns: 2fr 1fr;
+  }
+}
+
+.reasonList {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
+  margin-bottom: var(--space-3);
+}
+
+.backLink:hover {
+  color: var(--text-accent);
+}
