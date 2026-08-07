@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
 import sqlalchemy as sa
@@ -10,7 +10,7 @@ from flask import Flask
 from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt
 
 from ..extensions import db, jwt
-from ..models import TokenBlocklist, User
+from ..models import RevocationReason, TokenBlocklist, User
 
 
 def issue_tokens(user: User) -> Tuple[str, str, int]:
@@ -36,23 +36,88 @@ def issue_tokens(user: User) -> Tuple[str, str, int]:
     return access_token, refresh_token, expires_in
 
 
-def revoke_token(jwt_payload: dict, user_id: int) -> None:
+def revoke_token(
+    jwt_payload: dict,
+    user_id: int,
+    reason: RevocationReason = RevocationReason.ROTATED,
+) -> None:
     """Record a token's identifier so it is refused from now on.
+
+    The reason matters: a token superseded by rotation is honoured for a short grace
+    period, because the client's own in-flight request may still be carrying it, whereas
+    a token revoked by logout is refused immediately.
 
     The token's own expiry is stored alongside it, so a periodic job can discard the row
     once the token would have expired anyway rather than the table growing per logout.
     """
 
-    expires_at = datetime.fromtimestamp(jwt_payload["exp"], tz=timezone.utc)
+    jti = jwt_payload["jti"]
+
+    # Idempotent, because the grace period makes a second revocation of the same token
+    # genuinely reachable: a client replaying its superseded token within the window is
+    # allowed through and rotates again, arriving here with a jti that is already
+    # blocklisted. Inserting blindly violates the unique constraint and fails a request
+    # that was supposed to succeed.
+    existing = db.session.scalar(
+        sa.select(TokenBlocklist).where(TokenBlocklist.jti == jti)
+    )
+    if existing is not None:
+        # Logout must win over rotation. If the token was already revoked by a rotation
+        # and is now being revoked by a logout, the stricter reason replaces the laxer
+        # one, otherwise signing out would leave the grace period in force.
+        if reason is RevocationReason.LOGOUT:
+            existing.reason = RevocationReason.LOGOUT
+            existing.revoked_at = sa.func.now()
+        return
+
     db.session.add(
-        TokenBlocklist(jti=jwt_payload["jti"], user_id=user_id, expires_at=expires_at)
+        TokenBlocklist(
+            jti=jti,
+            user_id=user_id,
+            expires_at=datetime.fromtimestamp(jwt_payload["exp"], tz=timezone.utc),
+            reason=reason,
+        )
     )
 
 
 def is_revoked(jti: str) -> bool:
-    return (
-        db.session.scalar(sa.select(sa.literal(1)).where(TokenBlocklist.jti == jti)) is not None
-    )
+    """Whether a token should be refused.
+
+    A token revoked within the grace window is still accepted. Rotation means the
+    legitimate client's own previous token is blocklisted on every refresh, and two
+    requests carrying that token can genuinely be in flight at once - two browser tabs, or
+    a page restoring its session while a query retries. Rejecting the second would sign
+    the user out for doing nothing wrong.
+
+    The grace window is deliberately short. A stolen token is still worthless unless it is
+    used within seconds of the real user's next refresh, which is the property rotation
+    exists to provide. Logout is unaffected: it revokes the token and no further refresh
+    follows, so nothing legitimate is racing it.
+    """
+
+    from flask import current_app
+
+    row = db.session.execute(
+        sa.select(TokenBlocklist.revoked_at, TokenBlocklist.reason).where(
+            TokenBlocklist.jti == jti
+        )
+    ).one_or_none()
+
+    if row is None:
+        return False
+
+    revoked_at, reason = row
+
+    # Logout gets no grace whatsoever. The whole promise of the button is that the session
+    # ends now, and a window in which a stolen token still works would make it a lie.
+    if reason is not RevocationReason.ROTATED:
+        return True
+
+    grace = int(current_app.config.get("JWT_REFRESH_REUSE_GRACE_SECONDS", 0))
+    if grace <= 0:
+        return True
+
+    return datetime.now(timezone.utc) - revoked_at > timedelta(seconds=grace)
 
 
 def current_user_or_none() -> Optional[User]:

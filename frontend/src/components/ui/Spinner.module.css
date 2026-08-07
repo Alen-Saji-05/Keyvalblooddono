@@ -1,0 +1,51 @@
+.spinner {
+  display: inline-block;
+  border: 2px solid var(--border-strong);
+  /* One coloured edge is what makes the rotation legible. A fully coloured ring reads as
+     a static circle. */
+  border-top-color: var(--accent-600);
+  border-radius: 50%;
+  animation: spin 640ms linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fullPage {
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+}
+
+.fullPageLabel {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+/*
+ * With reduced motion the ring stops rotating, so it needs another way to say "working".
+ * A pulse conveys activity without the spinning that triggers vestibular symptoms.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: pulse 1.4s ease-in-out infinite;
+    border-top-color: var(--accent-600);
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+}

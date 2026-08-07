@@ -232,12 +232,12 @@ class TestTokenLifecycle:
         assert response.status_code == 200
         assert response.get_json()["access_token"]
 
-    def test_refresh_rotates_and_revokes_the_previous_token(self, client, patient):
-        """A used refresh token must not work twice.
+    def test_refresh_rotates_the_token(self, client, patient):
+        """Each refresh issues a new token and blocklists the one presented.
 
-        Rotation is what limits a stolen refresh token to a single use, and blocklisting
-        the superseded one is what makes the theft visible rather than letting the thief
-        and the real user both keep refreshing indefinitely.
+        Rotation is what limits a stolen refresh token to a single use. How long the
+        superseded token remains usable is covered by the two grace-period tests below:
+        briefly, so a concurrent second tab is not signed out, and not a moment longer.
         """
 
         login(client, "patient@example.org")
@@ -250,11 +250,22 @@ class TestTokenLifecycle:
         rotated = client.get_cookie("bloodnet_refresh", path="/api/auth")
         assert rotated.value != original_value
 
-        # Replay the superseded token.
-        client.set_cookie("bloodnet_refresh", original_value, path="/api/auth")
-        replay = client.post("/api/auth/refresh")
-        assert replay.status_code == 401
-        assert replay.get_json()["error"]["code"] == "token_revoked"
+        blocklisted = self._blocklist_reasons(patient)
+        assert blocklisted == ["rotated"]
+
+    @staticmethod
+    def _blocklist_reasons(user):
+        import sqlalchemy as sa
+
+        from app.extensions import db
+        from app.models import TokenBlocklist
+
+        return [
+            reason.value
+            for reason in db.session.scalars(
+                sa.select(TokenBlocklist.reason).where(TokenBlocklist.user_id == user.id)
+            ).all()
+        ]
 
     def test_access_token_is_not_accepted_on_the_refresh_endpoint(self, client, patient):
         headers = auth_header(client, "patient@example.org")
@@ -262,12 +273,68 @@ class TestTokenLifecycle:
         response = client.post("/api/auth/refresh", headers=headers)
         assert response.status_code == 401
 
-    def test_logout_revokes_the_refresh_token(self, client, patient):
+    def test_a_rotated_token_still_works_briefly_so_a_race_does_not_sign_you_out(
+        self, client, patient
+    ):
+        """Two tabs refreshing at once must not end the session.
+
+        Rotation blocklists the client's own previous token on every refresh. With no
+        leeway, a second request already in flight with that same cookie is rejected and
+        the user is signed out for doing nothing wrong. React StrictMode surfaced exactly
+        this by mounting the provider twice.
+
+        The grace period is short, so a token stolen and used later is still refused. That
+        is asserted separately below by disabling the window.
+        """
+
         login(client, "patient@example.org")
+        original = client.get_cookie("bloodnet_refresh", path="/api/auth").value
+
+        assert client.post("/api/auth/refresh").status_code == 200
+
+        # Replay the superseded token, as an in-flight second tab would.
+        client.set_cookie("bloodnet_refresh", original, path="/api/auth")
+        assert client.post("/api/auth/refresh").status_code == 200
+
+    def test_a_rotated_token_is_refused_once_the_grace_period_has_passed(
+        self, app, client, patient
+    ):
+        login(client, "patient@example.org")
+        original = client.get_cookie("bloodnet_refresh", path="/api/auth").value
+        assert client.post("/api/auth/refresh").status_code == 200
+
+        # Collapsing the window to zero is equivalent to the token having been revoked
+        # long ago, without making the test sleep.
+        app.config["JWT_REFRESH_REUSE_GRACE_SECONDS"] = 0
+        try:
+            client.set_cookie("bloodnet_refresh", original, path="/api/auth")
+            replay = client.post("/api/auth/refresh")
+            assert replay.status_code == 401
+            assert replay.get_json()["error"]["code"] == "token_revoked"
+        finally:
+            app.config["JWT_REFRESH_REUSE_GRACE_SECONDS"] = 20
+
+    def test_logout_revokes_the_refresh_token_immediately_with_no_grace(
+        self, client, patient
+    ):
+        """Logout gets no leeway at all, or the button would be a lie.
+
+        This is why the blocklist records why a token was revoked. The grace period that
+        makes rotation survivable must not apply here: a stolen token that still worked
+        for twenty seconds after signing out would defeat the point of signing out.
+        """
+
+        login(client, "patient@example.org")
+        original = client.get_cookie("bloodnet_refresh", path="/api/auth").value
+
         assert client.post("/api/auth/logout").status_code == 200
+
         # The cookie is cleared, but the real check is that the token itself is dead even
-        # if a copy was kept.
-        assert client.post("/api/auth/refresh").status_code == 401
+        # if a copy was kept - immediately, not after a delay.
+        client.set_cookie("bloodnet_refresh", original, path="/api/auth")
+        response = client.post("/api/auth/refresh")
+        assert response.status_code == 401
+        assert response.get_json()["error"]["code"] == "token_revoked"
 
     def test_deactivation_takes_effect_immediately_not_at_token_expiry(
         self, client, session, patient

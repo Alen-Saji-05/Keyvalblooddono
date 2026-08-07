@@ -270,3 +270,67 @@ nothing.
   of three units, one request fulfilled, none unfulfilled, a 100 per cent response rate, seven
   donors registered, and one eligible right now because the three who just gave are in cooldown.
 - Rebuilt and reseeded the development database against the current migration.
+
+### Phase 4 - Frontend foundation
+
+- **Created the Vite React application** with a development proxy sending `/api` to Flask.
+  Calling the API cross-origin also works, but it would put development on a different code
+  path than production, where the SPA is served from the same origin, so cookie and CORS
+  problems could hide until deployment.
+- **Added the design token layer.** Every colour, size, and radius in the application resolves
+  to a custom property, which is what makes the dark theme a second set of values rather than a
+  second set of components. Recorded the palette decision in `explainer.md`: the brand accent is
+  a deep crimson, but blood group badges are deliberately neutral, because a blood group is a
+  fact rather than a warning and colouring the most repeated element on screen red leaves nothing
+  louder for a request that is genuinely overdue.
+- **Added the UI primitives**: button and link-button, form field with label, hint, and error
+  wiring, badges, card, table with pagination, spinner, and the loading, empty, and error states.
+- **Added the API client** with a typed error object carrying the server's error envelope, and a
+  single-flight silent refresh.
+- **Added the auth provider and role guards**, with the access token held in a module variable
+  rather than in `localStorage` or React state, and session restore on load through the httpOnly
+  refresh cookie.
+- **Added the application shell**: role-specific navigation, responsive drawer, skip link, and
+  page header. Added the login and registration screens, and placeholders for every route that a
+  later phase will build, so the shell and guards are exercisable now.
+
+### Phase 4 - A refresh-token race that would have signed users out
+
+Loading the application immediately failed to restore the session. The network log showed two
+concurrent `POST /api/auth/refresh` calls, the first returning 200 and the second 401.
+
+The cause was refresh token rotation working exactly as designed and being hostile to legitimate
+use. Every refresh blocklists the token presented. Two requests carrying the same cookie can
+genuinely be in flight at once, and the first to arrive revokes the token the second is carrying,
+so the second is rejected. React StrictMode surfaced it by mounting the provider twice, but two
+browser tabs would do the same thing in production.
+
+Fixed on both sides:
+
+- **Frontend:** session restore now goes through the same single-flight promise as the retry path,
+  so any number of concurrent refresh attempts collapse into one request.
+- **Backend:** a token superseded by rotation is honoured for a short grace period, which is the
+  leeway approach mainstream identity providers use. A stolen token is still worthless unless used
+  within seconds of the real user's next refresh.
+
+That grace period would have broken logout, letting a stolen token work for twenty seconds after
+signing out. So the blocklist now records **why** a token was revoked, in migration
+`0002_revocation_reason`: rotation gets the grace period, logout gets none at all. Revocation was
+also made idempotent, because the grace window makes a second revocation of the same token
+genuinely reachable and inserting blindly violated the unique constraint on `jti`.
+
+Three tests cover it: a replayed token works inside the window, is refused outside it, and is
+refused immediately after logout.
+
+### Phase 4 - Other defects found and fixed
+
+- **The dark theme rendered a large pale blob** behind the sign-in page. The decorative wash used
+  `--accent-50`, a light-theme palette value, directly. Replaced with a translucent
+  `--wash-accent` token that has a value per theme. Text selection colours had the same problem
+  and were tokenised the same way.
+- **The explanatory pane on the sign-in screen was marked `aria-hidden`** on the grounds that it
+  was decorative. It is not - it is prose explaining how the network works, and hiding it would
+  have given a screen reader user less information than a sighted one on the same screen.
+- **A `Button` wrapping a `Link`** on the not-found page nested an anchor inside a button, which
+  is invalid markup and ambiguous to assistive technology. Replaced with a `LinkButton` that
+  renders a real anchor, so middle-click and open-in-new-tab work.

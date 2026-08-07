@@ -84,6 +84,20 @@ class UserRole(str, enum.Enum):
     PATIENT = "patient"
 
 
+class RevocationReason(str, enum.Enum):
+    """Why a refresh token was blocklisted.
+
+    The distinction is load-bearing, not bookkeeping. A token revoked by ``ROTATED`` is
+    the client's own previous token, and a request carrying it may legitimately still be
+    in flight, so it is honoured for a short grace period. A token revoked by ``LOGOUT``
+    must stop working immediately - that is what the logout button promises - and gets no
+    grace at all.
+    """
+
+    ROTATED = "rotated"
+    LOGOUT = "logout"
+
+
 class NotificationChannel(str, enum.Enum):
     """Which delivery driver handled a notification.
 

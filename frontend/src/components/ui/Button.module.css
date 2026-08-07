@@ -1,0 +1,136 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  border: 1px solid transparent;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* --- Sizes. Minimum 32px tall even at the small size, so a control in a dense table row
+       is still a comfortable pointer target. --- */
+.sm {
+  height: 32px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.md {
+  height: 38px;
+  padding: 0 var(--space-4);
+  font-size: var(--text-base);
+}
+
+.lg {
+  height: 44px;
+  padding: 0 var(--space-5);
+  font-size: var(--text-md);
+}
+
+/* --- Variants --- */
+.primary {
+  background: var(--accent-600);
+  color: #ffffff;
+  border-color: var(--accent-600);
+  box-shadow: var(--shadow-xs);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-700);
+  border-color: var(--accent-700);
+}
+
+.primary:active:not(:disabled) {
+  background: var(--accent-800);
+}
+
+.secondary {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+  box-shadow: var(--shadow-xs);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/*
+ * Destructive actions read as a bordered button with accent text, not a solid red block.
+ *
+ * The primary action is already solid crimson. A solid red destructive button beside it
+ * would be the same weight as the safe action, which is precisely backwards: the
+ * dangerous option should take slightly more deliberate aim.
+ */
+.danger {
+  background: var(--bg-surface);
+  color: var(--accent-700);
+  border-color: var(--accent-200);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--accent-50);
+  border-color: var(--accent-400);
+  color: var(--accent-800);
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+/* Anchors rendered as buttons must shed the link underline and inherit the variant's
+   colour rather than the global link colour. */
+.link {
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: none;
+}
+
+.link.primary {
+  color: #ffffff;
+}
+
+.link.secondary,
+.link.ghost {
+  color: var(--text-primary);
+}
+
+/* The spinner replaces the label rather than sitting beside it, so the button does not
+   change width mid-click and shift whatever is next to it. */
+.loadingLabel {
+  visibility: hidden;
+}
+
+.spinnerWrap {
+  position: absolute;
+  display: inline-flex;
+}
+
+.relative {
+  position: relative;
+}

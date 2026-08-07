@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin
-from .enums import UserRole
+from .enums import RevocationReason, UserRole
 from .types import pg_enum
 
 if TYPE_CHECKING:
@@ -105,6 +105,12 @@ class TokenBlocklist(Base):
     )
     revoked_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
+    )
+    # Rotation and logout are treated differently on reuse. See RevocationReason.
+    reason: Mapped[RevocationReason] = mapped_column(
+        pg_enum(RevocationReason, "revocation_reason"),
+        nullable=False,
+        server_default=RevocationReason.ROTATED.value,
     )
     # Rows are only useful until the token they revoke would have expired anyway. This
     # column lets a periodic job discard them instead of the table growing without limit.

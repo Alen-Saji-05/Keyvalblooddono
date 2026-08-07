@@ -11,6 +11,7 @@ from flask_jwt_extended import (
 )
 
 from ..extensions import db, limiter
+from ..models import RevocationReason
 from ..schemas.auth import (
     LoginIn,
     LoginOut,
@@ -114,7 +115,9 @@ def logout():
     """
 
     user = current_user()
-    revoke_token(get_jwt(), user.id)
+    # Revoked as a logout rather than a rotation, so it is refused immediately with no
+    # grace period. See RevocationReason.
+    revoke_token(get_jwt(), user.id, reason=RevocationReason.LOGOUT)
     db.session.commit()
 
     response = make_response(jsonify({"status": "signed out"}), 200)

@@ -14,6 +14,7 @@ from .enums import (
     DonorStatus,
     NotificationChannel,
     RequestStatus,
+    RevocationReason,
     Sex,
     UserRole,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "Notification",
     "NotificationChannel",
     "RequestStatus",
+    "RevocationReason",
     "Sex",
     "TokenBlocklist",
     "User",

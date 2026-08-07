@@ -1,0 +1,44 @@
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.markWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-600);
+  flex-shrink: 0;
+}
+
+.mark {
+  display: block;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  min-width: 0;
+}
+
+.name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* The second word is set smaller and spaced out, so the lockup reads as one mark rather
+   than two lines of equal-weight text competing with each other. */
+.suffix {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}

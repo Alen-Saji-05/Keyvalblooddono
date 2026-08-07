@@ -73,6 +73,18 @@ class BaseConfig:
     # refresh cookie is the only cookie carrying a credential.
     JWT_COOKIE_CSRF_PROTECT = False
 
+    # How long a rotated refresh token keeps working after being superseded.
+    #
+    # Rotation revokes the presented token, which is what limits a stolen one to a single
+    # use. Applied with no leeway it also breaks legitimate use: two browser tabs that
+    # refresh at the same moment both send the same cookie, the first rotation revokes it,
+    # and the second request - already in flight - is rejected and signs the user out.
+    #
+    # A short grace window keeps the security property, since a thief still has to use the
+    # token within seconds of the real user's rotation, while tolerating the race. This is
+    # the same leeway approach used by mainstream identity providers.
+    JWT_REFRESH_REUSE_GRACE_SECONDS = _int("JWT_REFRESH_REUSE_GRACE_SECONDS", 20)
+
     # --- CORS ---
     CORS_ORIGINS = _list("CORS_ORIGINS", "http://localhost:5173")
 

@@ -1,0 +1,260 @@
+/*
+ * Design tokens.
+ *
+ * Every colour, size, and radius in the application resolves to something declared here.
+ * No component hardcodes a hex value. That is what makes a dense interface stay coherent,
+ * and it is what makes the dark theme below a second set of values rather than a second
+ * set of components.
+ *
+ * On the palette: the brand accent is a deep crimson, which is the honest colour for a
+ * blood network. But red is deliberately NOT used for data. Blood group badges are
+ * neutral, because a blood group is a fact rather than a warning, and colouring eight of
+ * them red would spend the loudest colour in the palette on the most common element on
+ * screen. Red is reserved for two things: primary actions, and genuine urgency such as a
+ * request past its date. When everything is red, nothing is.
+ */
+
+:root {
+  /* --- Neutrals. A slightly cool grey, which keeps long tables from looking muddy. --- */
+  --ink-0: #ffffff;
+  --ink-50: #f7f8fa;
+  --ink-100: #eef0f4;
+  --ink-150: #e5e8ee;
+  --ink-200: #dadee6;
+  --ink-300: #c0c6d2;
+  --ink-400: #949cad;
+  --ink-500: #6c7484;
+  --ink-600: #4f5766;
+  --ink-700: #3a414f;
+  --ink-800: #262c38;
+  --ink-900: #171c25;
+  --ink-950: #0c1017;
+
+  /* --- Brand accent --- */
+  --accent-50: #fdf2f5;
+  --accent-100: #fbe4ea;
+  --accent-200: #f5c6d2;
+  --accent-300: #ec97ac;
+  --accent-400: #de6183;
+  --accent-500: #c9315c;
+  --accent-600: #ad1e46;
+  --accent-700: #8f1839;
+  --accent-800: #771731;
+  --accent-900: #64172d;
+
+  /* --- Supporting hues, each with one job --- */
+  --teal-50: #eaf6f4;
+  --teal-100: #d0ebe7;
+  --teal-500: #0f8377;
+  --teal-600: #0b6b61;
+  --teal-700: #09564e;
+
+  --amber-50: #fdf5e7;
+  --amber-100: #f9e8c8;
+  --amber-500: #b06d00;
+  --amber-600: #8f5800;
+  --amber-700: #714600;
+
+  --violet-50: #f3f2fd;
+  --violet-100: #e5e3fa;
+  --violet-500: #5a4fcf;
+  --violet-600: #4a3fb5;
+
+  /* --- Semantic surfaces --- */
+  --bg-canvas: var(--ink-50);
+  --bg-surface: var(--ink-0);
+  --bg-raised: var(--ink-0);
+  --bg-sunken: var(--ink-100);
+  --bg-inset: var(--ink-50);
+  --bg-hover: var(--ink-100);
+  --bg-active: var(--ink-150);
+  --bg-selected: var(--accent-50);
+  --bg-inverse: var(--ink-900);
+
+  /* --- Semantic text --- */
+  --text-primary: var(--ink-900);
+  --text-secondary: var(--ink-600);
+  --text-tertiary: var(--ink-500);
+  --text-disabled: var(--ink-400);
+  --text-inverse: var(--ink-0);
+  --text-accent: var(--accent-700);
+  --text-positive: var(--teal-700);
+  --text-caution: var(--amber-700);
+
+  /* --- Borders --- */
+  --border-subtle: var(--ink-150);
+  --border-default: var(--ink-200);
+  --border-strong: var(--ink-300);
+  --border-accent: var(--accent-600);
+
+  /* --- Status tones. Each is a background, a border, and a foreground that meet
+         contrast requirements together, so a badge cannot be assembled wrongly. --- */
+  --tone-neutral-bg: var(--ink-100);
+  --tone-neutral-fg: var(--ink-700);
+  --tone-neutral-border: var(--ink-200);
+
+  --tone-positive-bg: var(--teal-50);
+  --tone-positive-fg: var(--teal-700);
+  --tone-positive-border: var(--teal-100);
+
+  --tone-caution-bg: var(--amber-50);
+  --tone-caution-fg: var(--amber-700);
+  --tone-caution-border: var(--amber-100);
+
+  --tone-critical-bg: var(--accent-50);
+  --tone-critical-fg: var(--accent-800);
+  --tone-critical-border: var(--accent-200);
+
+  --tone-info-bg: var(--violet-50);
+  --tone-info-fg: var(--violet-600);
+  --tone-info-border: var(--violet-100);
+
+  /* --- Typography.
+         A system stack: it loads instantly, matches the operating system the coordinator
+         already works in, and avoids a web font request on a tool used over unreliable
+         connections. --- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.55;
+
+  /* --- Spacing, on a 4px grid --- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* --- Radii --- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 999px;
+
+  /* --- Elevation. Kept shallow: this is an operational tool, and heavy shadows on a
+         dense table read as clutter rather than depth. --- */
+  --shadow-xs: 0 1px 2px rgba(13, 17, 23, 0.06);
+  --shadow-sm: 0 1px 3px rgba(13, 17, 23, 0.08), 0 1px 2px rgba(13, 17, 23, 0.04);
+  --shadow-md: 0 4px 12px rgba(13, 17, 23, 0.08), 0 1px 3px rgba(13, 17, 23, 0.06);
+  --shadow-lg: 0 12px 32px rgba(13, 17, 23, 0.12), 0 2px 8px rgba(13, 17, 23, 0.06);
+
+  --ring-focus: 0 0 0 3px var(--accent-200);
+  --ring-focus-inverse: 0 0 0 3px rgba(255, 255, 255, 0.35);
+
+  /* Text selection. Declared as tokens because the light-theme pairing is unreadable on
+     a dark surface and vice versa. */
+  --selection-bg: var(--accent-200);
+  --selection-fg: var(--accent-900);
+
+  /* A soft accent wash used behind large decorative areas. Expressed as a translucent
+     accent rather than a solid tint from the palette: a fixed light tint such as
+     accent-50 renders as a large pale blob on a dark background, which is exactly what
+     it did before this token existed. */
+  --wash-accent: rgba(173, 30, 70, 0.1);
+
+  /* --- Layout --- */
+  --sidebar-width: 232px;
+  --topbar-height: 56px;
+  --content-max: 1400px;
+
+  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  color-scheme: light;
+}
+
+/*
+ * Dark theme.
+ *
+ * Only the semantic layer is redefined. Because no component references a raw palette
+ * value, this block is the entire dark theme.
+ *
+ * The accent lightens rather than staying put: crimson-600 on a near-black surface fails
+ * contrast for text, so the text and border roles move up the scale while the solid
+ * button fill stays saturated enough to read as the primary action.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-canvas: #0c1017;
+    --bg-surface: #141a23;
+    --bg-raised: #1a212c;
+    --bg-sunken: #0f141c;
+    --bg-inset: #11161f;
+    --bg-hover: #1e2632;
+    --bg-active: #26303e;
+    --bg-selected: #2a1620;
+    --bg-inverse: var(--ink-100);
+
+    --text-primary: #e8ecf2;
+    --text-secondary: #a7b0be;
+    --text-tertiary: #8791a1;
+    --text-disabled: #5d6675;
+    --text-inverse: var(--ink-900);
+    --text-accent: #f08fa8;
+    --text-positive: #4fc4b3;
+    --text-caution: #e0a848;
+
+    --border-subtle: #212a36;
+    --border-default: #2b3542;
+    --border-strong: #3b4757;
+    --border-accent: var(--accent-400);
+
+    --tone-neutral-bg: #1e2632;
+    --tone-neutral-fg: #c3cbd8;
+    --tone-neutral-border: #2b3542;
+
+    --tone-positive-bg: #0d2a28;
+    --tone-positive-fg: #5fd0bf;
+    --tone-positive-border: #164a45;
+
+    --tone-caution-bg: #2c2110;
+    --tone-caution-fg: #e6b25c;
+    --tone-caution-border: #4a3a1a;
+
+    --tone-critical-bg: #2e1220;
+    --tone-critical-fg: #f5a0b5;
+    --tone-critical-border: #562034;
+
+    --tone-info-bg: #1b1a35;
+    --tone-info-fg: #a49df0;
+    --tone-info-border: #2f2c5c;
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+
+    --ring-focus: 0 0 0 3px rgba(222, 97, 131, 0.32);
+
+    --selection-bg: rgba(222, 97, 131, 0.35);
+    --selection-fg: #ffffff;
+
+    --wash-accent: rgba(222, 97, 131, 0.09);
+
+    color-scheme: dark;
+  }
+}

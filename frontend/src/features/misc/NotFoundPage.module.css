@@ -1,0 +1,9 @@
+/* Stands alone outside the application shell, since an unknown address may be reached
+   without a session and there is no navigation to place it inside. */
+.wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
